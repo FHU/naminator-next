@@ -31,11 +31,13 @@ npx vitest run src/lib/__tests__/anthropic.test.ts
 
 Test files use `// @vitest-environment node` at the top when they test server-side code (API routes, lib functions); component tests default to jsdom.
 
+`src/test/setup.ts` runs before every test: it imports `@testing-library/jest-dom` matchers and globally suppresses `console.error` (so test output is clean by default).
+
 ## Architecture
 
 Next.js 16 App Router with TypeScript, Tailwind CSS 4, Prisma 6, Auth.js v5, and the Anthropic SDK.
 
-**Authentication flow:** Auth.js v5 with Google OAuth, configured in `src/auth.ts` using the Prisma adapter. The middleware (`src/middleware.ts`) protects all routes — unauthenticated users are redirected to `/login`. The session callback attaches `user.id` to the session object.
+**Authentication flow:** Auth.js v5 with Google OAuth, configured in `src/auth.ts` using the Prisma adapter. The middleware (`src/middleware.ts`) protects all routes — unauthenticated users are redirected to `/login`, and logged-in users visiting `/login` are redirected to `/`. The session callback attaches `user.id` to the session object. `src/types/next-auth.d.ts` extends the Auth.js `Session` type to include `user.id`.
 
 **API routes:** Single resource at `src/app/api/name-combinations/route.ts` with POST (generate new combinations via Claude and save) and GET (fetch user's history). Both endpoints require authentication via `auth()`.
 
@@ -53,8 +55,15 @@ Tests mock all external dependencies at the module boundary:
 - **`@/auth`** — mocked to return a fake session or `null`
 - **`@/lib/prisma`** — mocked with fake `nameCombinationSet.create` / `findMany` implementations
 - **`@/lib/anthropic`** — mocked in route tests so they test HTTP behavior independently of AI logic
-- **`global.fetch`** — mocked with `vi.stubGlobal` in `NameForm` tests
+- **`global.fetch`** — mocked with `vi.stubGlobal` in `NameForm` and `ResultCard` component tests
 
 ## Environment Variables
 
 Required in `.env`: `DATABASE_URL` (Neon PostgreSQL), `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ANTHROPIC_API_KEY`.
+
+Note: Neon `DATABASE_URL` values typically require `?sslmode=require` appended to the connection string.
+
+## Known Quirks
+
+- **`NEXT_REDIRECT` errors in tests**: Auth.js uses Next.js redirects internally; these are expected and not bugs.
+- **Prisma client not found after install**: Run `npx prisma generate` — the `postinstall` script handles this automatically on `npm install`.
